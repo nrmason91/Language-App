@@ -1594,12 +1594,15 @@ function StudentGame({ user, onLogout }) {
   const current = words[idx];
   const target = current ? (mode === 'pt-en' ? current.en : current.pt) : '';
   const source = current ? (mode === 'pt-en' ? current.pt : current.en) : '';
+  // Treat teacherId as the workspaceId for attempt logging (fits your current data model)
+  const workspaceId = user?.teacherId;
 
   function startGame(m) {
     if (allWords.length === 0) {
       alert('No lessons assigned yet. Ask your teacher to assign lessons.');
       return;
     }
+
     setWords(shuffle(allWords));
     setIdx(0);
     setMode(m);
@@ -1609,24 +1612,61 @@ function StudentGame({ user, onLogout }) {
     setAnswer('');
     setHintSpell(false);
     setHintSent(false);
-    setScore({ok:0, close:0, wrong:0});
+    setScore({ ok: 0, close: 0, wrong: 0 });
     setScreen('play');
   }
 
-  function goNext() {
-    if (idx + 1 >= words.length) {
-      saveProgress();
-      setScreen('done');
-    } else {
-      setIdx(idx + 1);
-      setInput('');
-      setFeedback(null);
-      setNeedsRetype(false);
-      setAnswer('');
-      setHintSpell(false);
-      setHintSent(false);
-    }
+  async function saveProgress() {
+    const allStudents = (await getData('students', true)) || {};
+    const student = allStudents[user.id];
+    if (!student) return;
+
+    student.progress = student.progress || { totalCorrect: 0, totalClose: 0, totalWrong: 0 };
+    student.progress.totalCorrect += score.ok;
+    student.progress.totalClose += score.close;
+    student.progress.totalWrong += score.wrong;
+    student.progress.lastActive = Date.now();
+
+    allStudents[user.id] = student;
+    await setData('students', allStudents, true);
   }
+
+  async function goNext() {
+  if (idx + 1 >= words.length) {
+    await saveProgress();
+
+    // Only call this if you actually HAVE a workspaceId in this component.
+    // If you don’t, remove this fetch for now or pass workspaceId in props.
+    if (typeof workspaceId !== "undefined" && workspaceId) {
+      await fetch("/api/game/attempt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          gameType: "vocab",
+          score: score.ok,
+          accuracy: words.length ? score.ok / words.length : null,
+          meta: {
+            total: words.length,
+            correct: score.ok,
+            incorrect: score.wrong,
+          },
+        }),
+      });
+    }
+
+    setScreen("done");
+  } else {
+    setIdx(idx + 1);
+    setInput("");
+    setFeedback(null);
+    setNeedsRetype(false);
+    setAnswer("");
+    setHintSpell(false);
+    setHintSent(false);
+  }
+}
+
 
   async function saveProgress() {
     const allStudents = await getData('students', true) || {};
@@ -1675,7 +1715,7 @@ function StudentGame({ user, onLogout }) {
 
     if (result === 'ok') {
       setScore(s => ({...s, ok: s.ok + 1}));
-      setTimeout(goNext, 700);
+      setTimeout(() => { void goNext(); }, 700);
     } else {
       setScore(s => result === 'close' ? {...s, close: s.close + 1} : {...s, wrong: s.wrong + 1});
       setNeedsRetype(true);
@@ -2215,7 +2255,7 @@ function StudentGame({ user, onLogout }) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,color:colors.muted}}>
           <span>{mode === 'pt-en' ? 'PT→EN' : 'EN→PT'}</span>
           <span><span style={{color:colors.green}}>{score.ok}</span> / {score.ok+score.close+score.wrong}</span>
-          <button onClick={() => { saveProgress(); setScreen('menu'); }} style={{padding:'6px 12px',background:'transparent',border:`1px solid ${colors.border}`,borderRadius:6,color:colors.muted,cursor:'pointer'}}>End</button>
+          <button onClick={() => { void saveProgress(); setScreen('menu'); }} style={{padding:'6px 12px',background:'transparent',border:`1px solid ${colors.border}`,borderRadius:6,color:colors.muted,cursor:'pointer'}}>End</button>
         </div>
 
         {/* Card */}

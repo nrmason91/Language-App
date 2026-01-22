@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id           String            @id @default(cuid())
+  name         String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  entries      PortfolioEntry[]
+  students     Student[]
+  memberships  WorkspaceMember[]
+  gameAttempts GameAttempt[]
+}
+
+model User {
+  id          String            @id @default(cuid())
+  clerkUserId String            @unique
+  email       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  memberships WorkspaceMember[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String
+  user        User      @relation(fields: [userId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@index([workspaceId])
+}
+
+model Student {
+  id           String           @id @default(cuid())
+  workspaceId  String
+  firstName    String
+  lastName     String
+  grade        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  entries      PortfolioEntry[]
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id])
+  gameAttempts GameAttempt[]
+
+  @@index([workspaceId])
+}
+
+model PortfolioEntry {
+  id          String    @id @default(cuid())
+  workspaceId String
+  studentId   String
+  title       String
+  notes       String?
+  createdAt   DateTime  @default(now())
+  student     Student   @relation(fields: [studentId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@index([studentId])
+}
+
+model GameAttempt {
+  id String @id @default(cuid())
+
+  workspaceId String
+  studentId   String?
+
+  gameType   String
+  score      Int
+  accuracy   Float?
+  durationMs Int?
+  meta       Json?
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  student   Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([studentId])
+  @@index([createdAt])
+}
